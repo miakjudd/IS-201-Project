@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="css/styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spring Crossy Road</title>
+    <style>
+         :root {
+                --dusty-pink: #d4a5a9;
+                --light-blush: #fce4ec;
+                --dark-berry: #8e6c70;
+            }
+
+            /* Sidebar and Navigation */
+            #sideNav {
+                background-color: var(--dusty-pink) !important;
+            }
+
+            .bg-primary {
+                background-color: var(--dusty-pink) !important;
+            }
+
+            .text-primary {
+                color: var(--dusty-pink) !important;
+            }
+
+            a {
+                color: var(--dark-berry);
+            }
+
+            a:hover {
+                color: var(--dusty-pink);
+            }
+
+            /* Social Icons */
+            .social-icons .social-icon {
+                background-color: var(--light-blush) !important;
+                color: var(--dusty-pink) !important;
+            }
+
+            .social-icons .social-icon:hover {
+                background-color: var(--dusty-pink) !important;
+                color: #ffffff !important;
+            }
+
+            /* Bullet Icons and Accents */
+            .fa-ul > li > span.fa-li i {
+                color: var(--dusty-pink) !important;
+            }
+
+            .fa-trophy.text-warning {
+                color: var(--dusty-pink) !important;
+            }
+
+            hr {
+                border-top: 1px solid var(--light-blush);
+            }
+
+            /* Profile Image Border */
+            .img-profile {
+                border: 0.5rem solid rgba(255, 255, 255, 0.3) !important;
+            }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #ffecf2; /* Soft Pink */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+            border-radius: 15px;
+            overflow: hidden;
+            border: 8px solid white;
+        }
+
+        canvas {
+            display: block;
+            background: skyblue;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            pointer-events: none;
+        }
+
+        .score-board {
+            font-size: 48px;
+            font-weight: bold;
+        }
+
+        #start-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 182, 193, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        h1 { margin: 0; font-size: 3rem; }
+        p { font-size: 1.2rem; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui">
+            <div class="score-board" id="score">0</div>
+        </div>
+        <div id="start-screen" id="startScreen">
+            <h1>SPRING HOP</h1>
+            <p>Use Arrow Keys to Move<br>Avoid the Pink Trucks!</p>
+            <p><strong>Click to Start</strong></p>
+        </div>
+    </div>
+
+<script>
+/**
+ * SPRING CROSSY ROAD - LOGIC
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const startScreen = document.getElementById('start-screen');
+
+// Game Constants
+const GRID = 40;
+const COLUMNS = 11;
+const ROWS = 15;
+canvas.width = COLUMNS * GRID;
+canvas.height = ROWS * GRID;
+
+let gameActive = false;
+let score = 0;
+let lanes = [];
+let player = { x: 5, y: 2, visualY: 2 };
+let stepCount = 0;
+let cameraY = 0;
+
+// Theme Colors
+const COLORS = {
+    grass: '#A7D477',
+    road: '#95a5a6',
+    car: '#FF80A4', // Pink Car
+    flower: '#FFD700', // Tulip Yellow
+    sky: '#87CEEB'
+};
+
+class Lane {
+    constructor(index) {
+        this.index = index;
+        this.y = index;
+        this.type = Math.random() > 0.4 ? 'grass' : 'road';
+        this.obstacles = [];
+        
+        if (this.type === 'road') {
+            this.speed = (Math.random() * 0.05) + 0.02;
+            if (Math.random() > 0.5) this.speed *= -1;
+            // Spawn initial cars
+            for(let i=0; i<3; i++) {
+                this.obstacles.push({ x: Math.random() * COLUMNS, width: 1.5 });
+            }
+        } else {
+            // Spawn Tulips
+            for(let i=0; i<2; i++) {
+                this.obstacles.push({ x: Math.floor(Math.random() * COLUMNS) });
+            }
+        }
+    }
+
+    update() {
+        if (this.type === 'road') {
+            this.obstacles.forEach(car => {
+                car.x += this.speed;
+                if (car.x > COLUMNS) car.x = -car.width;
+                if (car.x < -car.width) car.x = COLUMNS;
+            });
+        }
+    }
+
+    draw(viewY) {
+        const drawY = (ROWS - 1 - (this.y - viewY)) * GRID;
+        
+        // Draw Ground
+        ctx.fillStyle = this.type === 'grass' ? COLORS.grass : COLORS.road;
+        ctx.fillRect(0, drawY, canvas.width, GRID);
+
+        // Draw Lanes details (optional stripes)
+        if(this.type === 'road') {
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.setLineDash([10, 10]);
+            ctx.strokeRect(0, drawY + GRID/2, canvas.width, 0);
+            ctx.setLineDash([]);
+        }
+
+        // Draw Obstacles
+        this.obstacles.forEach(obs => {
+            if (this.type === 'road') {
+                ctx.fillStyle = COLORS.car;
+                ctx.fillRect(obs.x * GRID, drawY + 5, obs.width * GRID, GRID - 10);
+                // Windows
+                ctx.fillStyle = 'white';
+                ctx.fillRect(obs.x * GRID + 10, drawY + 10, 10, 5);
+            } else {
+                // Draw Tulip
+                ctx.fillStyle = '#FF69B4'; // Pink petals
+                ctx.fillRect(obs.x * GRID + 15, drawY + 10, 10, 10);
+                ctx.fillStyle = 'green';
+                ctx.fillRect(obs.x * GRID + 18, drawY + 20, 4, 15);
+            }
+        });
+    }
+}
+
+function initGame() {
+    lanes = [];
+    for(let i=0; i<ROWS + 5; i++) {
+        let l = new Lane(i);
+        if(i < 5) l.type = 'grass'; // Safe start zone
+        lanes.push(l);
+    }
+    player = { x: 5, y: 2, visualY: 2 };
+    score = 0;
+    cameraY = 0;
+    scoreEl.innerText = score;
+}
+
+function update() {
+    if (!gameActive) return;
+
+    // Camera follow
+    cameraY += (player.y - cameraY - 3) * 0.1;
+
+    // Generate new lanes
+    if (lanes[lanes.length-1].y < player.y + ROWS) {
+        lanes.push(new Lane(lanes[lanes.length-1].y + 1));
+    }
+
+    lanes.forEach(lane => {
+        lane.update();
+        
+        // Collision Detection
+        if (lane.y === Math.floor(player.y)) {
+            lane.obstacles.forEach(obs => {
+                if (lane.type === 'road') {
+                    if (player.x > obs.x && player.x < obs.x + obs.width) gameOver();
+                } else {
+                    // Tree/Flower collision (solid)
+                    // (Logic can be added to prevent moving into grass obstacles)
+                }
+            });
+        }
+    });
+
+    // Check if player falls off screen
+    if (player.y < cameraY - 1) gameOver();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Sky/Background
+    ctx.fillStyle = COLORS.sky;
+    ctx.fillRect(0,0, canvas.width, canvas.height);
+
+    // Draw Lanes
+    lanes.forEach(lane => lane.draw(cameraY));
+
+    // Draw Player (Pink Bunny/Block)
+    const playerDrawY = (ROWS - 1 - (player.y - cameraY)) * GRID;
+    ctx.fillStyle = 'white';
+    ctx.fillRect(player.x * GRID + 5, playerDrawY + 5, GRID - 10, GRID - 10);
+    // Ears
+    ctx.fillStyle = '#FFB6C1';
+    ctx.fillRect(player.x * GRID + 10, playerDrawY - 5, 5, 15);
+    ctx.fillRect(player.x * GRID + 25, playerDrawY - 5, 5, 15);
+
+    requestAnimationFrame(() => {
+        update();
+        draw();
+    });
+}
+
+function gameOver() {
+    gameActive = false;
+    startScreen.style.display = 'flex';
+    startScreen.innerHTML = `<h1>CRASHED!</h1><p>Score: ${score}</p><p>Click to Try Again</p>`;
+}
+
+// Controls
+window.addEventListener('keydown', (e) => {
+    if (!gameActive) return;
+    
+    let oldY = player.y;
+    if (e.key === 'ArrowUp') player.y++;
+    if (e.key === 'ArrowDown') player.y--;
+    if (e.key === 'ArrowLeft' && player.x > 0) player.x--;
+    if (e.key === 'ArrowRight' && player.x < COLUMNS - 1) player.x++;
+
+    if (player.y > score) {
+        score = Math.floor(player.y);
+        scoreEl.innerText = score;
+    }
+});
+
+startScreen.addEventListener('click', () => {
+    initGame();
+    gameActive = true;
+    startScreen.style.display = 'none';
+});
+
+// Start Animation Loop
+draw();
+
+</script>
+ <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top" id="sideNav">
+            <a class="navbar-brand js-scroll-trigger" href="#page-top">
+                <span class="d-block d-lg-none">Mia Judd</span>
+                <span class="d-none d-lg-block"><img class="img-fluid img-profile rounded-circle mx-auto mb-2" src="assets/img/croped.png" alt="Mia Judd" /></span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+            <div class="collapse navbar-collapse" id="navbarResponsive">
+                <ul class="navbar-nav">
+                    <li class="nav-item"><a class="nav-link js-scroll-trigger" href="index.html#about">About</a></li>
+                    <li class="nav-item"><a class="nav-link js-scroll-trigger" href="index.html#experience">Performance</a></li>
+                    <li class="nav-item"><a class="nav-link js-scroll-trigger" href="index.html#education">Education</a></li>
+                    <li class="nav-item"><a class="nav-link js-scroll-trigger" href="index.html#skills">Training</a></li>
+                    <li class="nav-item"><a class="nav-link js-scroll-trigger" href="index.html#interests">Philosophy</a></li>
+                    <li class="nav-item"><a class="nav-link js-scroll-trigger" href="index.html#awards">Accolades</a></li>
+                    <li class="nav-item"><a class="nav-link js-scroll-trigger" href="Aigame.html">Ai Game</a></li>
+                    <li class="nav-item"><a class="nav-link js-scroll-trigger" href="scratch.html">Scratch</a></li>
+                </ul>
+            </div>
+        </nav>
+</body>
+</html>
